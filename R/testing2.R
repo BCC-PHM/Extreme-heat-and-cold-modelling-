@@ -8,13 +8,25 @@ library(stringr)
 
 ##################################################
 #set.nc paths
-tmin_file <- "data/raw/tasmin_hadukgrid_uk_1km_day_20241201-20241231.nc"
+tmin_file <- "data/raw/tasmin/tasmin_hadukgrid_uk_1km_day_20241201-20241231.nc"
 tmax_file <- "data/raw/tasmax_hadukgrid_uk_1km_day_20241201-20241231.nc"
 
 #read .nc files
 tmin = rast(tmin_file)
 tmax = rast(tmax_file)
 
+
+##################################################################
+#also extracting the date 
+date_data = data.frame( date = as.Date(as.POSIXct(tmin@pntr[["time"]])))
+
+date_data = date_data %>% 
+  mutate(layers_date_id = as.character(as.numeric(str_extract(date, "\\d\\d$"))))
+
+
+###############################################################################
+#Read Birmingham boundary (shapefile / geopackage)
+bham_sf = st_read("data/external/boundaries/boundaries-lsoa-2021-birmingham/boundaries-lsoa-2021-birmingham.shp") # or .shp
 
 ###########################################
 #get the associated LSOA21CD for each row id
@@ -25,16 +37,7 @@ bham_id_lsoa21 = bham_sf %>%
   mutate(ID = row_number()) %>%             
   select(ID, LSOA21CD, LSOA21NM) 
 
-#also extracting the date 
-
-date_data = data.frame( date = as.Date(as.POSIXct(tmin@pntr[["time"]])))
-
-date_data = date_data %>% 
-
-
-###############################################################################
-#Read Birmingham boundary (shapefile / geopackage)
-bham_sf = st_read("data/external/boundaries/boundaries-lsoa-2021-birmingham/boundaries-lsoa-2021-birmingham.shp") # or .shp
+########################################
 
 #convert to terra for raster ops
 bham = terra::vect(bham_sf)
@@ -83,13 +86,14 @@ tmean_ex[,-1] = (as.matrix(tmin_ex[,-1]) + as.matrix(tmax_ex[,-1])) / 2
 colnames(tmean_ex) = gsub("tasmin", "tasmean", colnames(tmean_ex))
 
 #covert back to a dataframe and pviot it to long format 
-as.data.frame(tmean_ex) %>% 
+tmean_long = as.data.frame(tmean_ex) %>% 
   left_join(bham_id_lsoa21, by = ("ID")) %>% 
   pivot_longer(cols = c(-ID, -LSOA21CD,-LSOA21NM),
                names_to = "layers",
                values_to = "tasmean"
                ) %>% 
-  mutate(layers_date_id = str_extract(layers, "\\d+$"))
+  mutate(layers_date_id = str_extract(layers, "\\d+$")) %>% 
+  left_join(date_data, by = ("layers_date_id"))
   
 
 
